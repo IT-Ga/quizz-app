@@ -1,115 +1,157 @@
-import { useEffect, useState } from 'react'
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 
-import './App.css'
-
-const Quiz = () => {
-  const [activeQuestion, setActiveQuestion] = useState(0)
-  const [selectedAnswer, setSelectedAnswer] = useState('')
-  const [showResult, setShowResult] = useState(false)
-  const [selectedAnswerIndex, setSelectedAnswerIndex] = useState(null)
-  const [result, setResult] = useState({
-    score: 0,
-    correctAnswers: 0,
-    wrongAnswers: 0,
-  })
-
- const [data, setData] = useState([]);
- const [choices, setChoices] = useState([]);
-  const { questions } = data
-  // const { question , correctAnswer } = questions[activeQuestion]
-  
-  const getData = async()=> {
-    const response = await fetch("https://opentdb.com/api.php?amount=5");
-  const jsonData = await response.json();
-  console.log(jsonData.results);
-  setData(jsonData?.results);
-
+function shuffleArray(array) {
+  // Sử dụng thuật toán Fisher-Yates để xáo trộn mảng
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
   }
-  useEffect (()=>{ 
-    getData();
-  },[data])
-  
-  const onClickNext = () => {
-    // again reset the selectedAnwerIndex, so it won't effect next question
-    setSelectedAnswerIndex(null)
-    setResult((prev) =>
-      selectedAnswer
-        ? {
-            ...prev,
-            score: prev.score + 5,
-            correctAnswers: prev.correctAnswers + 1,
-          }
-        : { ...prev, wrongAnswers: prev.wrongAnswers + 1 }
-    )
-    if (activeQuestion !== questions.length - 1) {
-      setActiveQuestion((prev) => prev + 1)
-    } else {
-      setActiveQuestion(0)
-      setShowResult(true)
-    }
-  }
-
-  const onAnswerSelected = (answer, index) => {
-    setSelectedAnswerIndex(index)
-    if (answer === correctAnswer) {// eslint-disable-line
-      setSelectedAnswer(true)
-    } else {
-      setSelectedAnswer(false)
-    }
-  }
-
-  const addLeadingZero = (number) => (number > 9 ? number : `0${number}`)
-
-  return (
-    <div className="quiz-container">
-
-      {  !showResult ?
-        (
-          <div>
-                    <div>
-              <span className="active-question-no">{addLeadingZero(activeQuestion + 1)}</span>
-              {/* <span className="total-question">/{addLeadingZero(questions.length)}</span> */}
-            </div>
-            {/* <h2>{question}</h2> */}
-            <ul>
-              {choices.map((answer, index) => (
-                <li
-                  onClick={() => onAnswerSelected(answer, index)}
-                  key={answer}
-                  className={selectedAnswerIndex === index ? 'selected-answer' : null}>
-                  {answer}
-                </li>
-              ))}
-            </ul>
-            <div className="flex-right">
-              <button onClick={onClickNext} disabled={selectedAnswerIndex === null}>
-                {/* {activeQuestion === questions.length - 1 ? 'Finish' : 'Next'} */}aa
-              </button>
-            </div>
-          </div>
-
-        ) : (
-          <div className="result">
-          <h3>Result</h3>
-          <p>
-            Total Question: <span>{questions.length}</span>
-          </p>
-          <p>
-            Total Score:<span> {result.score}</span>
-          </p>
-          <p>
-            Correct Answers:<span> {result.correctAnswers}</span>
-          </p>
-          <p>
-            Wrong Answers:<span> {result.wrongAnswers}</span>
-          </p>
-        </div>
-
-        )
-       } 
-      </div>
-      
-  )
+  return array;
 }
 
-export default Quiz
+function App() {
+  const [questions, setQuestions] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selectedAnswers, setSelectedAnswers] = useState([]);
+  const [showResults, setShowResults] = useState(false);
+  const [startTime, setStartTime] = useState(null);
+  const [endTime, setEndTime] = useState(null);
+  const [choiceAnswer, setChoiceAnswer] = useState(null)
+
+  useEffect(() => {
+    fetchQuestions();
+  }, []);
+
+  const fetchQuestions = async () => {
+    try {
+      const response = await axios.get('https://opentdb.com/api.php?amount=5');
+      const formattedQuestions = response.data.results.map((question) => {
+        const answers = shuffleArray([...question.incorrect_answers, question.correct_answer]);
+        return {
+          question: question.question,
+          answers: answers
+        };
+      });
+      setQuestions(formattedQuestions);
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  const handleStartQuiz = () => {
+    setStartTime(Date.now());
+    setCurrentIndex(0);
+  };
+
+  const handleAnswerChange = (answer, answerIndex) => {
+    setChoiceAnswer(answerIndex)
+    const updatedAnswers = [...selectedAnswers];
+    updatedAnswers[currentIndex] = answer;
+    setSelectedAnswers(updatedAnswers);
+  };
+
+  const handleNextQuestion = () => {
+    setChoiceAnswer(null);
+    if (!selectedAnswers[currentIndex]) {
+      return; // Không thể chuyển câu nếu chưa chọn câu trả lời cho câu hiện tại
+    }
+
+    if (currentIndex < questions.length - 1) {
+      setCurrentIndex(currentIndex + 1);
+    } else {
+      setEndTime(Date.now());
+      setShowResults(true);
+    }
+  };
+
+  const calculateDuration = () => {
+    if (startTime && endTime) {
+      const duration = (endTime - startTime) / 1000; // Đổi thành giây
+      return duration.toFixed(2); // Lấy 2 chữ số sau dấu thập phân
+    }
+    return null;
+  };
+
+  const calculateScore = () => {
+    let correctCount = 0;
+    let wrongCount = 0;
+
+    questions.forEach((question, index) => {
+      if (selectedAnswers[index] === question.answers[question.answers.length - 1]) {
+        correctCount++;
+      } else {
+        wrongCount++;
+      }
+    });
+
+    return { correctCount, wrongCount };
+  };
+
+  const handleRestartQuiz = () => {
+    // Reset các state về giá trị mặc định để bắt đầu lại quiz
+    setSelectedAnswers([]);
+    setShowResults(false);
+    setStartTime(null);
+    setEndTime(null);
+  };
+
+  return (
+    <div className="quiz-container relative">
+      {!startTime && !showResults ? (
+        
+        <div >
+          <h1 className=' text-2xl font-bold text-center'>Quiz App</h1>
+         
+          <button  class="w-full bg-primary-600 hover:bg-primary-700 
+                          focus:ring-4 focus:outline-none focus:ring-primary-300 
+                          font-medium rounded-lg text-sm px-5 py-2.5 
+                          text-center
+                          bg-indigo-600 text-white  tracking-wide
+                           "
+                          onClick={handleStartQuiz}
+                          >Start</button>
+        </div>
+      ) : !showResults ? (
+        <div className='leading-6'>
+          <h1 className=''>Quiz App</h1>
+          {questions.length > 0 && (
+            <div >
+              <h2>{questions[currentIndex].question}</h2>
+              <ul className='leading-6' >
+                {questions[currentIndex].answers.map((answer, answerIndex) => (
+                  <li  key={answerIndex} className='w-full'>
+                    
+                    <button className={ choiceAnswer === answerIndex ? 'w-full border-4 border-teal-500  block mt-4   rounded-lg py-2 px-6 text-lg' : 
+                    'w-full block mt-4 border border-gray-300 rounded-lg py-2 px-6 text-lg'
+                    }  onClick={() => handleAnswerChange(answer, answerIndex)} >{answer}</button>
+                     
+
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {currentIndex < questions.length - 1 ? (
+            <button className=' bg-indigo-600 text-white text-sm font-bold tracking-wide rounded-full px-5 py-2 absolute bottom-8 right-8' disabled={!selectedAnswers[currentIndex]} onClick={handleNextQuestion}>Next</button>
+          ) : (
+            <button className=' bg-indigo-600 text-white text-sm font-bold tracking-wide rounded-full px-5 py-2 absolute bottom-8 right-8'  onClick={handleNextQuestion}>Finish</button>
+          )}
+        </div>
+      ) : (
+        <div>
+          <h1>Quiz Results</h1>
+          <h2 className='text-xl font-bold text-center'>{Math.round(calculateScore().correctCount / questions.length * 100 *100)/100 > 50 ? "Pass":"Fail"}</h2>
+          <p>Correct answers: {calculateScore().correctCount}</p>
+          <p>Wrong answers: {calculateScore().wrongCount}</p>
+          <p>Score answers: {Math.round(calculateScore().correctCount / questions.length * 100 *100)/100}</p>
+          <p>Time taken: {calculateDuration()} seconds</p>
+          <button className="m-auto mt-4 block bg-indigo-600 text-white text-sm font-bold tracking-wide rounded-full px-5 py-2" onClick={handleRestartQuiz}>Restart</button>
+
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default App;
